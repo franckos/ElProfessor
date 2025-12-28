@@ -1,0 +1,26 @@
+[project]
+name = "elprofessor"
+version = "0.1.0"
+description = "ElProfessor - Application pour Reachy Mini"
+requires-python = ">=3.12"
+dependencies = [
+    "reachy-mini[gstreamer]>=1.2.5",
+    "reachy-mini-toolbox",
+    "opencv-python<=5.0",
+    "mediapipe==0.10.14",
+    "numpy",
+]
+
+[project.scripts]
+elprofessor = "elprofessor.main:main"
+
+[build-system]
+requires = ["setuptools"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools]
+package-dir = { "" = "src" }
+
+[tool.setuptools.packages.find]
+where = ["src"]
+

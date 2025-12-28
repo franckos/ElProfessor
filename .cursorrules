@@ -1,0 +1,150 @@
+# ElProfessor - Cursor Rules
+
+## Contexte du projet
+
+Ce projet est **ElProfessor**, une application pour le robot **Reachy Mini (Wireless)** développée par Pollen Robotics.
+
+**IMPORTANT** : Ce projet utilise la version **Wireless** de Reachy Mini, qui est la version autonome alimentée par un Raspberry Pi 4. Elle fonctionne de manière indépendante avec sa batterie interne et sa connexion Wi-Fi.
+
+## Documentation de référence
+
+### Sources principales
+
+1. **Documentation officielle Reachy Mini (Wireless)** :
+   - https://github.com/pollen-robotics/reachy_mini/blob/develop/docs/platforms/reachy_mini/get_started.md
+   - Guide de démarrage complet pour la version Wireless
+
+2. **Application de conversation de référence** :
+   - https://github.com/pollen-robotics/reachy_mini_conversation_app
+   - Exemple d'application complète utilisant Reachy Mini
+
+### Points clés de la version Wireless
+
+- Le robot crée un réseau Wi-Fi nommé `reachy-mini-ap` (mot de passe: `reachy-mini`)
+- Configuration via navigateur : http://reachy-mini.local:8000/settings
+- Connexion SSH : username `pollen`, password `root`
+- Le robot doit être connecté au Wi-Fi pour fonctionner
+- Utilise GStreamer pour la communication sans fil
+
+## Spécificités techniques
+
+### Dépendances
+
+- Python >= 3.12
+- `reachy-mini[gstreamer]>=1.2.5` (extras gstreamer requis pour la version Wireless)
+- Pour la version Wireless, utiliser le backend GStreamer
+
+### Structure du projet
+
+- Package Python : `elprofessor`
+- Point d'entrée : `src/elprofessor/main.py`
+- Exécution : `python -m elprofessor`
+- Environnement virtuel : `elprofessor_env/` (créé avec `uv`)
+
+### Connexion au robot
+
+```python
+from reachy_mini import ReachyMini
+
+# Pour la version Wireless, TOUJOURS utiliser le context manager avec localhost_only=False et timeout
+with ReachyMini(localhost_only=False, timeout=15.0) as reachy_mini:
+    # Votre code ici
+```
+
+**IMPORTANT - Version Wireless** : Tous les appels à `ReachyMini()` doivent :
+- Utiliser le context manager (`with`)
+- Inclure le paramètre `localhost_only=False` pour permettre la connexion au robot via le réseau Wi-Fi
+- Inclure le paramètre `timeout=15.0` pour définir le timeout de connexion
+
+**Note importante** : La connexion réseau est requise. Le terminal intégré de Cursor bloque l'accès réseau. Toujours exécuter depuis un terminal externe (Terminal.app, iTerm2, etc.).
+
+## Bonnes pratiques de développement
+
+### Code
+
+- Écrire le code en français (commentaires, docstrings, messages)
+- Utiliser des noms de variables et fonctions en anglais (convention Python)
+- Documenter les fonctions avec des docstrings
+- Gérer les erreurs de connexion au robot
+- Vérifier la connexion avant d'utiliser le robot : `reachy.is_connected()`
+
+### Documentation et tests
+
+- **Ne pas créer de documentation sur les actions effectuées** : l'utilisateur préfère tester directement sur le robot
+- **Ne pas créer de scripts de test** : l'utilisateur teste directement sur le robot Reachy Mini
+- Se concentrer sur l'implémentation fonctionnelle plutôt que sur la documentation ou les tests unitaires
+
+### Gestion des dépendances
+
+- Utiliser `uv` pour la gestion de l'environnement virtuel
+- Utiliser `uv pip install` au lieu de `pip install` si l'environnement a été créé avec `uv`
+- Ne pas utiliser `uv run` - utiliser `python` après activation de l'environnement
+
+### Exécution
+
+- Toujours activer l'environnement virtuel avant d'exécuter : `source elprofessor_env/bin/activate`
+- Exécuter avec : `python -m elprofessor`
+- Tester depuis un terminal externe pour la connexion réseau
+
+### Version Wireless - Points d'attention
+
+- **OBLIGATOIRE** : Tous les appels à `ReachyMini()` doivent utiliser `localhost_only=False`
+- Le robot doit être connecté au Wi-Fi local
+- Utiliser le backend GStreamer pour la communication
+- Le robot peut être accessible via `reachy-mini.local` ou son adresse IP
+- Le daemon Reachy Mini doit être démarré sur le robot (généralement automatique)
+- Pour les fonctionnalités avancées, vérifier que le daemon est démarré avec `--wireless-version`
+
+## Exemples de code
+
+### Connexion basique
+
+```python
+from reachy_mini import ReachyMini
+
+def main():
+    try:
+        # IMPORTANT: Utiliser le context manager avec localhost_only=False et timeout pour la version Wireless
+        with ReachyMini(localhost_only=False, timeout=15.0) as reachy_mini:
+            print("✅ Connecté à Reachy Mini")
+            # Votre code ici
+    except Exception as e:
+        print(f"Erreur de connexion : {e}")
+```
+
+### Gestion des erreurs de connexion
+
+- Toujours gérer les `TimeoutError` qui peuvent survenir si le daemon n'est pas démarré
+- Vérifier la connexion réseau avant d'essayer de se connecter
+- Fournir des messages d'erreur clairs en français
+
+## Commandes utiles
+
+### Installation
+
+```bash
+uv venv elprofessor_env
+source elprofessor_env/bin/activate
+uv pip install -e .
+```
+
+### Exécution
+
+```bash
+source elprofessor_env/bin/activate
+python -m elprofessor
+```
+
+### Build pour installation sur Reachy
+
+```bash
+uv build
+```
+
+## Notes importantes
+
+- Le projet est indépendant et ne doit pas dépendre d'autres projets ALFRED/Reachy
+- Toujours tester la connexion au robot avant d'exécuter des commandes
+- Respecter les limitations de la version Wireless (batterie, réseau, etc.)
+- Documenter les nouvelles fonctionnalités en français
+

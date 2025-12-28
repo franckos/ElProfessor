@@ -8,14 +8,16 @@ from elprofessor.tools.base import Tool
 class ToolManager:
     """Gestionnaire central pour tous les tools."""
 
-    def __init__(self, reachy):
+    def __init__(self, reachy, camera_manager=None):
         """
         Initialise le gestionnaire de tools.
 
         Args:
             reachy: Instance de ReachyMini
+            camera_manager: Instance de CameraManager (optionnel)
         """
         self._reachy = reachy
+        self._camera_manager = camera_manager
         self._tools: Dict[str, Tool] = {}
         self._active_tools: Dict[str, Tool] = {}
 
@@ -27,6 +29,8 @@ class ToolManager:
             tool: Instance du tool à enregistrer
         """
         tool.set_reachy(self._reachy)
+        if self._camera_manager is not None:
+            tool.set_camera_manager(self._camera_manager)
         self._tools[tool.name] = tool
         print(f"✅ Tool '{tool.name}' enregistré: {tool.description}")
 

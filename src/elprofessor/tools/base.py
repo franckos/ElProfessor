@@ -19,6 +19,7 @@ class Tool(ABC):
         self.description = description
         self._running = False
         self._reachy = None
+        self._camera_manager = None
 
     def set_reachy(self, reachy):
         """
@@ -28,6 +29,15 @@ class Tool(ABC):
             reachy: Instance de ReachyMini
         """
         self._reachy = reachy
+
+    def set_camera_manager(self, camera_manager):
+        """
+        Définit le CameraManager à utiliser.
+
+        Args:
+            camera_manager: Instance de CameraManager
+        """
+        self._camera_manager = camera_manager
 
     @abstractmethod
     def start(self) -> bool:

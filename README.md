@@ -20,6 +20,11 @@ source elprofessor_env/bin/activate
 
 # 4. Installer les dépendances
 uv pip install -e .
+
+# 5. Configurer les variables d'environnement (optionnel, pour le tool de conversation)
+# Copiez env.example en .env et remplissez votre clé API OpenAI
+cp env.example .env
+# Puis éditez .env et ajoutez votre OPENAI_API_KEY
 ```
 
 **C'est tout !** Une fois fait, vous n'aurez plus besoin de réinstaller (sauf si vous recréez l'environnement virtuel).
@@ -44,6 +49,26 @@ python -m elprofessor
 ```
 
 **C'est tout !** Pas besoin de réinstaller à chaque fois.
+
+## ⚙️ Configuration
+
+### Variables d'environnement
+
+Pour utiliser le tool de conversation avec OpenAI Realtime API, vous devez configurer votre clé API :
+
+1. Copiez le fichier `env.example` en `.env` :
+   ```bash
+   cp env.example .env
+   ```
+
+2. Éditez le fichier `.env` et ajoutez votre clé API OpenAI :
+   ```
+   OPENAI_API_KEY=sk-votre-cle-api-ici
+   ```
+
+   Vous pouvez obtenir une clé API sur [https://platform.openai.com/api-keys](https://platform.openai.com/api-keys)
+
+**Note** : Le fichier `.env` est ignoré par git pour des raisons de sécurité.
 
 ## ⚠️ Important
 

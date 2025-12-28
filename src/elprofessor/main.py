@@ -1,21 +1,28 @@
 """Point d'entrée principal pour ElProfessor."""
 
+import os
 import signal
 import sys
 import time
 
 import cv2
+from dotenv import load_dotenv
 
 from reachy_mini import ReachyMini
 
 from elprofessor.managers import CameraManager
 from elprofessor.tool_manager import ToolManager
+from elprofessor.tools.camera_snapshot import CameraSnapshotTool
 from elprofessor.tools.camera_view import CameraViewTool
+from elprofessor.tools.conversation import ConversationTool
 from elprofessor.tools.head_tracking import HeadTrackingTool
 
 
 def main():
     """Fonction principale de l'application ElProfessor."""
+    # Charger les variables d'environnement depuis .env
+    load_dotenv()
+
     print("🤖 ElProfessor - Application pour Reachy Mini")
     print("=" * 50)
 
@@ -34,7 +41,12 @@ def main():
             # Enregistrement des tools
             tool_manager.register_tool(CameraViewTool(x=100, y=100, width=854, height=480))
             tool_manager.register_tool(HeadTrackingTool())
-            # Ajouter d'autres tools ici au fur et à mesure
+            tool_manager.register_tool(CameraSnapshotTool())
+
+            # Enregistrement du tool de conversation (nécessite ToolManager)
+            conversation_tool = ConversationTool(tool_manager)
+            tool_manager.register_tool(conversation_tool)
+            # Note: Le ConversationTool n'est pas activé automatiquement car il nécessite OPENAI_API_KEY
 
             # Gestion de l'arrêt propre
             def signal_handler(sig, frame):
@@ -62,6 +74,15 @@ def main():
             # Activer les tools
             tool_manager.activate_tool("head_tracking")
             tool_manager.activate_tool("camera_view")
+            tool_manager.activate_tool("camera_snapshot")  # Nécessaire pour les snapshots ChatGPT
+
+            # Activer le tool de conversation si OPENAI_API_KEY est définie
+            if os.getenv("OPENAI_API_KEY"):
+                print("\n💬 Activation du tool de conversation...")
+                tool_manager.activate_tool("conversation")
+            else:
+                print("\n⚠️  OPENAI_API_KEY non définie - Le tool de conversation n'est pas activé")
+                print("   Pour l'activer, définissez la variable d'environnement OPENAI_API_KEY")
 
             # Boucle principale - maintient l'application en vie et gère la caméra
             try:

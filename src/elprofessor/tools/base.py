@@ -1,7 +1,7 @@
 """Classe de base pour tous les tools."""
 
 from abc import ABC, abstractmethod
-from typing import Optional
+from typing import Dict, Optional
 
 
 class Tool(ABC):
@@ -72,3 +72,27 @@ class Tool(ABC):
         """
         self._running = running
 
+    def to_openai_function(self) -> Optional[Dict]:
+        """
+        Convertit le tool en définition de fonction OpenAI.
+
+        Returns:
+            Dictionnaire au format OpenAI Function Calling, ou None si le tool
+            ne doit pas être exposé à ChatGPT
+        """
+        return None
+
+    def execute(self, **kwargs) -> Dict:
+        """
+        Exécute le tool avec des paramètres.
+
+        Args:
+            **kwargs: Paramètres pour l'exécution du tool
+
+        Returns:
+            Dictionnaire contenant le résultat de l'exécution avec les clés:
+            - 'success': bool indiquant si l'exécution a réussi
+            - 'result': résultat de l'exécution (si success=True)
+            - 'error': message d'erreur (si success=False)
+        """
+        return {"success": False, "error": f"Tool '{self.name}' ne supporte pas l'exécution avec paramètres"}

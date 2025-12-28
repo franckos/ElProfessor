@@ -28,3 +28,6 @@ Thumbs.db
 # UV
 uv.lock
 
+# Variables d'environnement
+.env
+

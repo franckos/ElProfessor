@@ -1,7 +1,16 @@
 """Module des tools pour ElProfessor."""
 
 from elprofessor.tools.base import Tool
+from elprofessor.tools.camera_snapshot import CameraSnapshotTool
+from elprofessor.tools.camera_view import CameraViewTool
+from elprofessor.tools.conversation import ConversationTool
 from elprofessor.tools.head_tracking import HeadTrackingTool
 
-__all__ = ["Tool", "HeadTrackingTool"]
+__all__ = [
+    "Tool",
+    "CameraSnapshotTool",
+    "CameraViewTool",
+    "ConversationTool",
+    "HeadTrackingTool",
+]
 

@@ -116,3 +116,46 @@ class ToolManager:
         for name in list(self._active_tools.keys()):
             self.deactivate_tool(name)
 
+    def call_tool(self, name: str, **kwargs) -> Dict:
+        """
+        Exécute un tool avec des paramètres.
+
+        Args:
+            name: Nom du tool à exécuter
+            **kwargs: Paramètres à passer au tool
+
+        Returns:
+            Dictionnaire contenant le résultat de l'exécution avec les clés:
+            - 'success': bool indiquant si l'exécution a réussi
+            - 'result': résultat de l'exécution (si success=True)
+            - 'error': message d'erreur (si success=False)
+        """
+        tool = self._tools.get(name)
+        if tool is None:
+            return {
+                "success": False,
+                "error": f"Tool '{name}' non trouvé"
+            }
+
+        try:
+            return tool.execute(**kwargs)
+        except Exception as e:
+            return {
+                "success": False,
+                "error": f"Erreur lors de l'exécution du tool '{name}': {str(e)}"
+            }
+
+    def get_tools_for_openai(self) -> List[Dict]:
+        """
+        Récupère la liste des tools au format OpenAI Function Calling.
+
+        Returns:
+            Liste de dictionnaires au format OpenAI Function Calling
+        """
+        tools = []
+        for tool in self._tools.values():
+            openai_function = tool.to_openai_function()
+            if openai_function is not None:
+                tools.append(openai_function)
+        return tools
+

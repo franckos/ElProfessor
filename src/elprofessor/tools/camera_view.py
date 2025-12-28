@@ -1,6 +1,6 @@
 """Tool d'affichage de la caméra pour Reachy Mini."""
 
-from typing import Optional
+from typing import Dict, Optional
 
 import cv2
 import numpy as np
@@ -104,3 +104,82 @@ class CameraViewTool(Tool):
             self._camera_manager.update_display(self._current_frame, self._window_name)
             return True
         return False
+
+    def to_openai_function(self) -> Optional[Dict]:
+        """
+        Convertit le tool en définition de fonction OpenAI.
+
+        Returns:
+            Dictionnaire au format OpenAI Function Calling (format Realtime API)
+        """
+        return {
+            "type": "function",
+            "name": "camera_view",
+            "description": "Active ou désactive l'affichage de la caméra dans une fenêtre. "
+                           "Permet de voir ce que voit le robot.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "action": {
+                        "type": "string",
+                        "enum": ["get_status", "activate", "deactivate"],
+                        "description": "Action à effectuer: 'get_status' pour obtenir l'état, "
+                                     "'activate' pour activer l'affichage, 'deactivate' pour le désactiver"
+                    }
+                },
+                "required": ["action"]
+            }
+        }
+
+    def execute(self, **kwargs) -> Dict:
+        """
+        Exécute le tool pour gérer l'affichage de la caméra.
+
+        Args:
+            **kwargs: Paramètres contenant 'action' ('get_status', 'activate', 'deactivate')
+
+        Returns:
+            Dictionnaire contenant le résultat de l'exécution
+        """
+        action = kwargs.get("action", "get_status")
+
+        if action == "get_status":
+            return {
+                "success": True,
+                "result": {
+                    "running": self._running,
+                    "window_name": self._window_name
+                }
+            }
+        elif action == "activate":
+            if self._running:
+                return {
+                    "success": True,
+                    "result": {"message": "L'affichage de la caméra est déjà actif"}
+                }
+            if self.start():
+                return {
+                    "success": True,
+                    "result": {"message": "Affichage de la caméra activé"}
+                }
+            else:
+                return {
+                    "success": False,
+                    "error": "Impossible d'activer l'affichage de la caméra"
+                }
+        elif action == "deactivate":
+            if not self._running:
+                return {
+                    "success": True,
+                    "result": {"message": "L'affichage de la caméra est déjà désactivé"}
+                }
+            self.stop()
+            return {
+                "success": True,
+                "result": {"message": "Affichage de la caméra désactivé"}
+            }
+        else:
+            return {
+                "success": False,
+                "error": f"Action '{action}' non reconnue. Utilisez 'get_status', 'activate' ou 'deactivate'"
+            }

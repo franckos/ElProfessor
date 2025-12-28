@@ -9,6 +9,11 @@ dependencies = [
     "opencv-python<=5.0",
     "mediapipe==0.10.14",
     "numpy",
+    "openai>=2.1",
+    "python-dotenv",
+    "sounddevice",
+    "scipy",
+    "websockets",
 ]
 
 [project.scripts]

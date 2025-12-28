@@ -1,6 +1,6 @@
 """Tool de suivi de visage pour Reachy Mini."""
 
-from typing import Optional
+from typing import Dict, Optional
 
 import numpy as np
 from reachy_mini_toolbox.vision import HeadTracker
@@ -106,3 +106,82 @@ class HeadTrackingTool(Tool):
                     self._last_target = eye_center.copy()
         except Exception as e:
             print(f"⚠️  Erreur dans le traitement de frame head_tracking: {e}")
+
+    def to_openai_function(self) -> Optional[Dict]:
+        """
+        Convertit le tool en définition de fonction OpenAI.
+
+        Returns:
+            Dictionnaire au format OpenAI Function Calling (format Realtime API)
+        """
+        return {
+            "type": "function",
+            "name": "head_tracking",
+            "description": "Active ou désactive le suivi de visage. "
+                           "Quand activé, le robot suit automatiquement les mouvements de la tête de l'utilisateur.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "action": {
+                        "type": "string",
+                        "enum": ["get_status", "activate", "deactivate"],
+                        "description": "Action à effectuer: 'get_status' pour obtenir l'état, "
+                                     "'activate' pour activer le suivi, 'deactivate' pour le désactiver"
+                    }
+                },
+                "required": ["action"]
+            }
+        }
+
+    def execute(self, **kwargs) -> Dict:
+        """
+        Exécute le tool pour gérer le suivi de visage.
+
+        Args:
+            **kwargs: Paramètres contenant 'action' ('get_status', 'activate', 'deactivate')
+
+        Returns:
+            Dictionnaire contenant le résultat de l'exécution
+        """
+        action = kwargs.get("action", "get_status")
+
+        if action == "get_status":
+            return {
+                "success": True,
+                "result": {
+                    "running": self._running,
+                    "vertical_offset": self._vertical_offset
+                }
+            }
+        elif action == "activate":
+            if self._running:
+                return {
+                    "success": True,
+                    "result": {"message": "Le suivi de visage est déjà actif"}
+                }
+            if self.start():
+                return {
+                    "success": True,
+                    "result": {"message": "Suivi de visage activé"}
+                }
+            else:
+                return {
+                    "success": False,
+                    "error": "Impossible d'activer le suivi de visage"
+                }
+        elif action == "deactivate":
+            if not self._running:
+                return {
+                    "success": True,
+                    "result": {"message": "Le suivi de visage est déjà désactivé"}
+                }
+            self.stop()
+            return {
+                "success": True,
+                "result": {"message": "Suivi de visage désactivé"}
+            }
+        else:
+            return {
+                "success": False,
+                "error": f"Action '{action}' non reconnue. Utilisez 'get_status', 'activate' ou 'deactivate'"
+            }

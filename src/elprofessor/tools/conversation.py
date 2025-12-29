@@ -6,12 +6,12 @@ import json
 import os
 import random
 import threading
+import time
 from pathlib import Path
 from queue import Queue
 from typing import Dict, Optional
 
 import numpy as np
-import sounddevice as sd
 from openai import AsyncOpenAI
 from scipy.signal import resample
 from websockets.exceptions import ConnectionClosedError
@@ -110,15 +110,20 @@ class ConversationTool(Tool):
             print("❌ ToolManager non défini pour le tool conversation")
             return False
 
+        if self._reachy is None:
+            print("❌ ReachyMini non défini pour le tool conversation")
+            return False
+
         try:
-            # Vérifier que des périphériques audio sont disponibles
+            # Démarrer l'enregistrement et la lecture audio via l'API media du robot
             try:
-                devices = sd.query_devices()
-                if len(devices) == 0:
-                    print("⚠️  Aucun périphérique audio détecté")
+                self._reachy.media.start_recording()
+                self._reachy.media.start_playing()
+                time.sleep(1)  # Laisser le temps aux pipelines de démarrer
+                print("✅ Audio du robot activé (microphone et haut-parleurs)")
             except Exception as e:
-                print(f"⚠️  Erreur lors de la vérification des périphériques audio: {e}")
-                # On continue quand même, l'erreur se produira lors de l'ouverture du stream
+                print(f"⚠️  Erreur lors du démarrage de l'audio du robot: {e}")
+                # On continue quand même, l'erreur se produira lors de l'utilisation
 
             # Initialiser le client OpenAI asynchrone
             self._client = AsyncOpenAI(api_key=self._api_key)
@@ -129,7 +134,6 @@ class ConversationTool(Tool):
             self._loop_thread.start()
 
             # Attendre que la boucle soit prête
-            import time
 
             for _ in range(50):  # Attendre max 5 secondes
                 if self._event_loop is not None:
@@ -188,6 +192,17 @@ class ConversationTool(Tool):
                 self._head_wobbler.stop()
             except Exception as e:
                 print(f"⚠️  Erreur lors de l'arrêt du HeadWobbler: {e}")
+
+        # Arrêter l'enregistrement et la lecture audio via l'API media du robot
+        if self._reachy is not None:
+            try:
+                self._reachy.media.stop_recording()
+            except Exception as e:
+                print(f"⚠️  Erreur lors de l'arrêt de l'enregistrement: {e}")
+            try:
+                self._reachy.media.stop_playing()
+            except Exception as e:
+                print(f"⚠️  Erreur lors de l'arrêt de la lecture: {e}")
 
         # Attendre que le thread se termine
         if self._loop_thread:
@@ -637,95 +652,143 @@ class ConversationTool(Tool):
                 print(f"❌ Erreur Realtime API [{error_code}]: {error_msg}")
 
     async def _audio_input_loop(self) -> None:
-        """Boucle de capture audio depuis le microphone."""
+        """Boucle de capture audio depuis le microphone du robot."""
         try:
-            print("🎤 Microphone activé")
+            print("🎤 Microphone du robot activé")
 
-            # Utiliser un stream d'entrée avec sounddevice
-            # Récupérer le sample rate du périphérique par défaut
-            default_device = sd.query_devices(kind="input")
-            device_sample_rate = int(default_device["default_samplerate"])
+            if self._reachy is None:
+                print("❌ ReachyMini non disponible pour la capture audio")
+                return
 
-            with sd.InputStream(
-                samplerate=device_sample_rate, channels=self._channels, dtype="int16", blocksize=self._chunk_size
-            ) as stream:
-                while not self._stop_event.is_set():
-                    try:
-                        # Lire un chunk audio
-                        audio_data, overflowed = stream.read(self._chunk_size)
+            # Récupérer le sample rate d'entrée du robot
+            try:
+                input_sample_rate = self._reachy.media.get_input_audio_samplerate()
+            except Exception as e:
+                print(f"⚠️  Erreur lors de la récupération du sample rate d'entrée: {e}")
+                input_sample_rate = self._sample_rate  # Fallback
 
-                        if overflowed:
-                            print("⚠️  Overflow audio détecté")
+            while not self._stop_event.is_set():
+                try:
+                    # Récupérer un échantillon audio du robot
+                    audio_frame = self._reachy.media.get_audio_sample()
 
-                        # Reshape si nécessaire (gérer mono/stereo)
-                        if audio_data.ndim == 2:
-                            # Si stéréo, prendre seulement le premier canal
-                            if audio_data.shape[1] > 1:
-                                audio_data = audio_data[:, 0]
-                            else:
-                                audio_data = audio_data.flatten()
+                    if audio_frame is None:
+                        # Pas de données disponibles, continuer la boucle
+                        await asyncio.sleep(0.01)
+                        continue
 
-                        # Resample si nécessaire
-                        if device_sample_rate != self._sample_rate:
-                            num_samples = int(len(audio_data) * self._sample_rate / device_sample_rate)
-                            audio_data = resample(audio_data, num_samples)
+                    # audio_frame est un numpy array float32
+                    # Reshape si nécessaire (gérer mono/stereo)
+                    if audio_frame.ndim == 2:
+                        # Si stéréo, prendre seulement le premier canal
+                        if audio_frame.shape[1] > audio_frame.shape[0]:
+                            audio_frame = audio_frame.T
+                        if audio_frame.shape[1] > 1:
+                            audio_frame = audio_frame[:, 0]
+                        else:
+                            audio_frame = audio_frame.flatten()
+                    elif audio_frame.ndim > 1:
+                        audio_frame = audio_frame.flatten()
 
-                        # S'assurer que c'est du int16
-                        audio_data = audio_data.astype(np.int16)
+                    # Resample si nécessaire
+                    if input_sample_rate != self._sample_rate:
+                        num_samples = int(len(audio_frame) * self._sample_rate / input_sample_rate)
+                        audio_frame = resample(audio_frame, num_samples)
 
-                        # Convertir en bytes
-                        audio_bytes = audio_data.tobytes()
+                    # Convertir float32 → int16 pour OpenAI
+                    # Normaliser d'abord (float32 est entre -1.0 et 1.0)
+                    audio_frame = np.clip(audio_frame, -1.0, 1.0)
+                    audio_data = (audio_frame * 32767.0).astype(np.int16)
 
-                        # Encoder en base64 et envoyer à la session
-                        audio_base64 = base64.b64encode(audio_bytes).decode("utf-8")
+                    # Convertir en bytes
+                    audio_bytes = audio_data.tobytes()
 
-                        # Envoyer à l'API Realtime (garder contre les races pendant la reconnexion)
-                        if self._connection:
-                            try:
-                                await self._connection.input_audio_buffer.append(audio=audio_base64)
-                            except Exception as e:
-                                # Ignorer les erreurs de connexion (peut être en cours de reconnexion)
-                                pass
+                    # Encoder en base64 et envoyer à la session
+                    audio_base64 = base64.b64encode(audio_bytes).decode("utf-8")
 
-                        await asyncio.sleep(0.01)  # Petite pause
-                    except Exception as e:
-                        if not self._stop_event.is_set():
-                            print(f"⚠️  Erreur lors de la capture audio: {e}")
-                        await asyncio.sleep(0.1)
+                    # Envoyer à l'API Realtime (garder contre les races pendant la reconnexion)
+                    if self._connection:
+                        try:
+                            await self._connection.input_audio_buffer.append(audio=audio_base64)
+                        except Exception as e:
+                            # Ignorer les erreurs de connexion (peut être en cours de reconnexion)
+                            pass
+
+                    await asyncio.sleep(0)  # Yield to event loop
+                except Exception as e:
+                    if not self._stop_event.is_set():
+                        print(f"⚠️  Erreur lors de la capture audio: {e}")
+                    await asyncio.sleep(0.1)
 
         except Exception as e:
             print(f"❌ Erreur dans la boucle de capture audio: {e}")
 
     async def _audio_output_loop(self) -> None:
-        """Boucle de lecture audio vers les haut-parleurs."""
+        """Boucle de lecture audio vers les haut-parleurs du robot."""
         try:
-            print("🔊 Haut-parleurs activés")
+            print("🔊 Haut-parleurs du robot activés")
 
-            # Utiliser un stream de sortie avec sounddevice
-            with sd.OutputStream(
-                samplerate=self._sample_rate, channels=self._channels, dtype="int16", blocksize=self._chunk_size
-            ) as stream:
-                while not self._stop_event.is_set():
+            if self._reachy is None:
+                print("❌ ReachyMini non disponible pour la lecture audio")
+                return
+
+            # Récupérer le sample rate de sortie du robot
+            try:
+                output_sample_rate = self._reachy.media.get_output_audio_samplerate()
+            except Exception as e:
+                print(f"⚠️  Erreur lors de la récupération du sample rate de sortie: {e}")
+                output_sample_rate = self._sample_rate  # Fallback
+
+            while not self._stop_event.is_set():
+                try:
+                    # Récupérer un chunk audio de la queue
                     try:
-                        # Récupérer un chunk audio de la queue (avec timeout)
-                        try:
-                            audio_bytes = self._audio_output_queue.get_nowait()
+                        audio_bytes = self._audio_output_queue.get_nowait()
 
-                            # Convertir les bytes en numpy array
-                            audio_array = np.frombuffer(audio_bytes, dtype="int16")
-                            # Reshape pour correspondre au format attendu (samples, channels)
-                            audio_array = audio_array.reshape(-1, self._channels)
+                        # Convertir les bytes en numpy array int16
+                        audio_array = np.frombuffer(audio_bytes, dtype=np.int16)
 
-                            # Jouer l'audio
-                            stream.write(audio_array)
-                        except:
-                            # Queue vide - continuer la boucle
-                            await asyncio.sleep(0.01)
-                            continue
-                    except Exception as e:
-                        if not self._stop_event.is_set():
-                            print(f"⚠️  Erreur lors de la lecture audio: {e}")
-                        await asyncio.sleep(0.1)
+                        # Reshape si nécessaire
+                        if audio_array.ndim == 1:
+                            # Si mono, reshape pour correspondre au format attendu
+                            audio_array = audio_array.reshape(-1, 1)
+                        elif audio_array.ndim == 2:
+                            # Si stéréo, prendre seulement le premier canal pour mono
+                            if audio_array.shape[1] > audio_array.shape[0]:
+                                audio_array = audio_array.T
+                            if audio_array.shape[1] > 1:
+                                audio_array = audio_array[:, 0:1]
+
+                        # Convertir int16 → float32 pour push_audio_sample()
+                        # Normaliser entre -1.0 et 1.0
+                        audio_frame = audio_array.astype(np.float32) / 32767.0
+
+                        # Resample si nécessaire
+                        if self._sample_rate != output_sample_rate:
+                            # Resample chaque canal si nécessaire
+                            if audio_frame.ndim == 2:
+                                resampled_channels = []
+                                for ch in range(audio_frame.shape[1]):
+                                    channel = audio_frame[:, ch]
+                                    num_samples = int(len(channel) * output_sample_rate / self._sample_rate)
+                                    resampled = resample(channel, num_samples)
+                                    resampled_channels.append(resampled)
+                                audio_frame = np.column_stack(resampled_channels)
+                            else:
+                                num_samples = int(len(audio_frame) * output_sample_rate / self._sample_rate)
+                                audio_frame = resample(audio_frame, num_samples)
+
+                        # Envoyer l'audio au robot
+                        self._reachy.media.push_audio_sample(audio_frame)
+
+                    except:
+                        # Queue vide - continuer la boucle
+                        await asyncio.sleep(0.01)
+                        continue
+                except Exception as e:
+                    if not self._stop_event.is_set():
+                        print(f"⚠️  Erreur lors de la lecture audio: {e}")
+                    await asyncio.sleep(0.1)
 
         except Exception as e:
             print(f"❌ Erreur dans la boucle de lecture audio: {e}")

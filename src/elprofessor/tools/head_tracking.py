@@ -116,6 +116,16 @@ class HeadTrackingTool(Tool):
 
         # Ne pas bouger la tête si le robot est en train de parler (HeadWobbler gère les mouvements)
         if self._robot_speaking:
+            # Log seulement occasionnellement pour éviter le spam
+            if hasattr(self, "_last_skip_log_time"):
+                import time
+                if time.time() - self._last_skip_log_time > 2.0:  # Log toutes les 2 secondes max
+                    print("⏸️  HeadTracking: Ignoré (robot parle)")
+                    self._last_skip_log_time = time.time()
+            else:
+                import time
+                self._last_skip_log_time = time.time()
+                print("⏸️  HeadTracking: Ignoré (robot parle)")
             return
 
         if self._head_tracker is None:

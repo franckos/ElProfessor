@@ -425,7 +425,9 @@ class ConversationTool(Tool):
             if self._audio_delay_task and not self._audio_delay_task.done():
                 self._audio_delay_task.cancel()
             # Réinitialiser le HeadWobbler quand l'utilisateur commence à parler
+            # S'assurer que le HeadWobbler est désactivé (l'utilisateur parle, pas le robot)
             if self._head_wobbler is not None:
+                self._notify_head_wobbler_robot_speaking(False)
                 self._head_wobbler.reset()
         elif event_type == "input_audio_buffer.speech_stopped":
             print("🔇 Fin de la parole détectée")
@@ -476,6 +478,8 @@ class ConversationTool(Tool):
         ):
             # Réponse terminée - le robot a fini de parler
             self._robot_speaking = False
+            # Notifier AVANT le reset() pour arrêter immédiatement les mouvements
+            self._notify_head_wobbler_robot_speaking(False)
             self._notify_head_tracking_robot_speaking(False)
 
             # Réinitialiser le HeadWobbler
@@ -484,6 +488,8 @@ class ConversationTool(Tool):
         elif event_type == "response.created":
             # Réponse créée - le robot va commencer à parler
             self._robot_speaking = True
+            print("✅ ConversationTool: response.created - Robot va commencer à parler")
+            self._notify_head_wobbler_robot_speaking(True)
             self._notify_head_tracking_robot_speaking(True)
 
             # Enregistrer le temps pour calculer le délai de réflexion
@@ -503,10 +509,13 @@ class ConversationTool(Tool):
             print(f"🤖 Assistant: {transcript}")
         elif event_type in ("response.audio.delta", "response.output_audio.delta"):
             # Audio de réponse - appliquer le délai de réflexion si nécessaire
-            # Notifier le head_tracking que le robot parle (au premier chunk si pas déjà fait)
+            # Notifier le head_tracking et le HeadWobbler que le robot parle (au premier chunk si pas déjà fait)
+            # IMPORTANT: Notifier AVANT d'appeler feed() pour éviter les race conditions
             if not self._robot_speaking:
                 self._robot_speaking = True
                 self._notify_head_tracking_robot_speaking(True)
+                self._notify_head_wobbler_robot_speaking(True)
+                print("✅ HeadWobbler: Robot commence à parler - mouvements activés")
 
             audio_delta = getattr(event, "delta", "")
             if audio_delta:
@@ -831,6 +840,23 @@ class ConversationTool(Tool):
             # Ne pas bloquer si la notification échoue
             pass
 
+    def _notify_head_wobbler_robot_speaking(self, speaking: bool) -> None:
+        """
+        Notifie le HeadWobbler que le robot est en train de parler ou non.
+
+        Args:
+            speaking: True si le robot parle, False sinon
+        """
+        if self._head_wobbler is None:
+            return
+
+        try:
+            if hasattr(self._head_wobbler, "set_robot_speaking"):
+                self._head_wobbler.set_robot_speaking(speaking)
+        except Exception as e:
+            # Ne pas bloquer si la notification échoue
+            print(f"⚠️  Erreur lors de la notification du HeadWobbler: {e}")
+
     def _cleanup(self) -> None:
         """Nettoie les ressources."""
         self._connection = None
@@ -842,10 +868,12 @@ class ConversationTool(Tool):
         self._buffered_audio_chunks.clear()
         self._audio_delay_until = None
         self._response_pending = False
-        self._head_wobbler = None
         # Réinitialiser le flag de parole du robot
         self._robot_speaking = False
+        # Notifier avant de mettre à None
+        self._notify_head_wobbler_robot_speaking(False)
         self._notify_head_tracking_robot_speaking(False)
+        self._head_wobbler = None
 
     def to_openai_function(self) -> Optional[Dict]:
         """

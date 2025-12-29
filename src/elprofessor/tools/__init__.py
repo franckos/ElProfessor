@@ -6,6 +6,7 @@ from elprofessor.tools.camera_view import CameraViewTool
 from elprofessor.tools.conversation import ConversationTool
 from elprofessor.tools.head_tracking import HeadTrackingTool
 from elprofessor.tools.move_head import MoveHeadTool
+from elprofessor.tools.play_emotion import PlayEmotionTool
 
 __all__ = [
     "Tool",
@@ -14,4 +15,5 @@ __all__ = [
     "ConversationTool",
     "HeadTrackingTool",
     "MoveHeadTool",
+    "PlayEmotionTool",
 ]

@@ -16,6 +16,7 @@ from elprofessor.tools.camera_snapshot import CameraSnapshotTool
 from elprofessor.tools.camera_view import CameraViewTool
 from elprofessor.tools.conversation import ConversationTool
 from elprofessor.tools.head_tracking import HeadTrackingTool
+from elprofessor.tools.play_emotion import PlayEmotionTool
 
 
 def main():
@@ -42,6 +43,7 @@ def main():
             tool_manager.register_tool(CameraViewTool(x=100, y=100, width=854, height=480))
             tool_manager.register_tool(HeadTrackingTool())
             tool_manager.register_tool(CameraSnapshotTool())
+            tool_manager.register_tool(PlayEmotionTool())
 
             # Enregistrement du tool de conversation (nécessite ToolManager)
             conversation_tool = ConversationTool(tool_manager)

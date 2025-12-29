@@ -1,0 +1,28 @@
+[Unit]
+Description=ElProfessor - Application pour Reachy Mini
+After=network-online.target reachy-mini-daemon.service
+Wants=network-online.target
+Requires=reachy-mini-daemon.service
+
+[Service]
+Type=simple
+User=pollen
+Group=pollen
+WorkingDirectory=/home/pollen/elprofessor
+ExecStart=/home/pollen/elprofessor/scripts/start_elprofessor.sh
+Restart=always
+RestartSec=10
+StandardOutput=journal
+StandardError=journal
+
+# Variables d'environnement
+Environment="PYTHONUNBUFFERED=1"
+Environment="DISPLAY=:0"
+
+# Sécurité
+NoNewPrivileges=true
+PrivateTmp=false
+
+[Install]
+WantedBy=multi-user.target
+

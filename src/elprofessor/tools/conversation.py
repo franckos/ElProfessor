@@ -17,6 +17,7 @@ from scipy.signal import resample
 from websockets.exceptions import ConnectionClosedError
 
 from elprofessor.tools.base import Tool
+from elprofessor.audio.head_wobbler import HeadWobbler
 
 
 class ConversationTool(Tool):
@@ -86,6 +87,11 @@ class ConversationTool(Tool):
         self._channels = 1  # Mono
         self._chunk_size = 4096  # Taille des chunks audio
 
+        # HeadWobbler pour les mouvements de tête synchronisés avec l'audio
+        self._head_wobbler: Optional[HeadWobbler] = None
+        # Flag pour suivre si le robot est en train de parler (pour notifier head_tracking)
+        self._robot_speaking: bool = False
+
     def start(self) -> bool:
         """
         Démarre le tool de conversation.
@@ -136,6 +142,15 @@ class ConversationTool(Tool):
             # La session sera démarrée automatiquement depuis _main_loop()
             # via _start_session_with_retry()
 
+            # Initialiser le HeadWobbler si ReachyMini est disponible
+            if self._reachy is not None:
+                try:
+                    self._head_wobbler = HeadWobbler(self._reachy)
+                    self._head_wobbler.start()
+                    print("✅ HeadWobbler activé - Mouvements de tête synchronisés avec l'audio")
+                except Exception as e:
+                    print(f"⚠️  Impossible d'initialiser le HeadWobbler: {e}")
+
             self._set_running(True)
             print("✅ ConversationTool démarré - Prêt à converser avec ChatGPT")
             return True
@@ -166,6 +181,13 @@ class ConversationTool(Tool):
 
             # Arrêter la session
             asyncio.run_coroutine_threadsafe(self._stop_session(), self._event_loop)
+
+        # Arrêter le HeadWobbler
+        if self._head_wobbler is not None:
+            try:
+                self._head_wobbler.stop()
+            except Exception as e:
+                print(f"⚠️  Erreur lors de l'arrêt du HeadWobbler: {e}")
 
         # Attendre que le thread se termine
         if self._loop_thread:
@@ -296,11 +318,16 @@ class ConversationTool(Tool):
                 self._connection = conn
 
                 # Configurer la session
-                # Ajouter des instructions pour un délai de réflexion naturel
+                # Ajouter des instructions pour un délai de réflexion naturel et éviter les réponses spontanées
                 enhanced_instructions = (
                     f"{instructions}\n\n"
-                    "IMPORTANT: When the user finishes speaking, wait 1-2 seconds before responding. "
-                    "This creates a more natural conversation flow. Take your time to think before speaking."
+                    "CRITICAL RULES:\n"
+                    "1. When the user finishes speaking, wait 1-2 seconds before responding. "
+                    "This creates a more natural conversation flow. Take your time to think before speaking.\n"
+                    "2. DO NOT speak spontaneously or initiate conversation. ONLY respond when the user speaks to you.\n"
+                    "3. If the user doesn't speak after you finish your response, remain completely silent. "
+                    "Do not try to fill silence, continue the conversation, or ask follow-up questions.\n"
+                    "4. Wait passively for the user to speak. The conversation is user-driven, not robot-driven."
                 )
 
                 await conn.session.update(
@@ -318,7 +345,7 @@ class ConversationTool(Tool):
                             },
                             "output": {
                                 "format": {"type": "audio/pcm", "rate": self._sample_rate},
-                                "voice": "alloy",
+                                "voice": "echo",
                             },
                         },
                         "tools": tools,
@@ -382,6 +409,9 @@ class ConversationTool(Tool):
             self._buffered_audio_chunks.clear()
             if self._audio_delay_task and not self._audio_delay_task.done():
                 self._audio_delay_task.cancel()
+            # Réinitialiser le HeadWobbler quand l'utilisateur commence à parler
+            if self._head_wobbler is not None:
+                self._head_wobbler.reset()
         elif event_type == "input_audio_buffer.speech_stopped":
             print("🔇 Fin de la parole détectée")
             # Enregistrer le moment où l'utilisateur a fini de parler
@@ -429,10 +459,19 @@ class ConversationTool(Tool):
             "response.audio.completed",
             "response.completed",
         ):
-            # Réponse terminée
-            pass
+            # Réponse terminée - le robot a fini de parler
+            self._robot_speaking = False
+            self._notify_head_tracking_robot_speaking(False)
+
+            # Réinitialiser le HeadWobbler
+            if self._head_wobbler is not None:
+                self._head_wobbler.reset()
         elif event_type == "response.created":
-            # Réponse créée - enregistrer le temps pour calculer le délai de réflexion
+            # Réponse créée - le robot va commencer à parler
+            self._robot_speaking = True
+            self._notify_head_tracking_robot_speaking(True)
+
+            # Enregistrer le temps pour calculer le délai de réflexion
             if self._response_pending and self._last_speech_stopped_time:
                 elapsed = asyncio.get_event_loop().time() - self._last_speech_stopped_time
                 if elapsed < self._thinking_delay:
@@ -449,9 +488,29 @@ class ConversationTool(Tool):
             print(f"🤖 Assistant: {transcript}")
         elif event_type in ("response.audio.delta", "response.output_audio.delta"):
             # Audio de réponse - appliquer le délai de réflexion si nécessaire
+            # Notifier le head_tracking que le robot parle (au premier chunk si pas déjà fait)
+            if not self._robot_speaking:
+                self._robot_speaking = True
+                self._notify_head_tracking_robot_speaking(True)
+
             audio_delta = getattr(event, "delta", "")
             if audio_delta:
                 try:
+                    # IMPORTANT: Envoyer l'audio au HeadWobbler IMMÉDIATEMENT, même si on retarde la lecture
+                    # Le HeadWobbler doit analyser l'audio en temps réel pour générer les mouvements synchronisés
+                    # Le speech_tapper analyse l'audio et génère les offsets de mouvement
+                    if self._head_wobbler is not None:
+                        try:
+                            self._head_wobbler.feed(audio_delta)
+                        except Exception as e:
+                            # Ne pas bloquer si le HeadWobbler a un problème
+                            print(f"⚠️  Erreur lors de l'envoi de l'audio au HeadWobbler: {e}")
+                            import traceback
+
+                            traceback.print_exc()
+                    else:
+                        print("⚠️  HeadWobbler n'est pas initialisé")
+
                     audio_bytes = base64.b64decode(audio_delta)
 
                     # Vérifier si on doit retarder l'audio pour créer un délai de réflexion
@@ -691,6 +750,24 @@ class ConversationTool(Tool):
             except Exception:
                 break
 
+    def _notify_head_tracking_robot_speaking(self, speaking: bool) -> None:
+        """
+        Notifie le HeadTrackingTool que le robot est en train de parler ou non.
+
+        Args:
+            speaking: True si le robot parle, False sinon
+        """
+        if self._tool_manager is None:
+            return
+
+        try:
+            head_tracking_tool = self._tool_manager.get_tool("head_tracking")
+            if head_tracking_tool is not None and hasattr(head_tracking_tool, "set_robot_speaking"):
+                head_tracking_tool.set_robot_speaking(speaking)
+        except Exception as e:
+            # Ne pas bloquer si la notification échoue
+            pass
+
     def _cleanup(self) -> None:
         """Nettoie les ressources."""
         self._connection = None
@@ -702,6 +779,10 @@ class ConversationTool(Tool):
         self._buffered_audio_chunks.clear()
         self._audio_delay_until = None
         self._response_pending = False
+        self._head_wobbler = None
+        # Réinitialiser le flag de parole du robot
+        self._robot_speaking = False
+        self._notify_head_tracking_robot_speaking(False)
 
     def to_openai_function(self) -> Optional[Dict]:
         """

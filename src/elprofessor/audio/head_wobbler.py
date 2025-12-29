@@ -16,6 +16,7 @@ from elprofessor.audio.speech_tapper import HOP_MS, SwayRollRT
 try:
     from reachy_mini.utils import create_head_pose
     from reachy_mini.utils.interpolation import compose_world_offset
+
     COMPOSE_OFFSETS_AVAILABLE = True
 except ImportError:
     COMPOSE_OFFSETS_AVAILABLE = False
@@ -179,9 +180,7 @@ class HeadWobbler:
                 )
 
                 # Composer les poses (comme dans l'application de référence)
-                combined_head_pose = compose_world_offset(
-                    current_head_pose, secondary_head_pose, reorthonormalize=True
-                )
+                combined_head_pose = compose_world_offset(current_head_pose, secondary_head_pose, reorthonormalize=True)
 
                 # Appliquer via set_target (thread-safe)
                 self._reachy.set_target(head=combined_head_pose)
@@ -207,9 +206,14 @@ class HeadWobbler:
                         if COMPOSE_OFFSETS_AVAILABLE:
                             current_head_pose = current_pose
                             secondary_head_pose = create_head_pose(
-                                x=x_m, y=y_m, z=z_m,
-                                roll=roll_rad, pitch=pitch_rad, yaw=yaw_rad,
-                                degrees=False, mm=False
+                                x=x_m,
+                                y=y_m,
+                                z=z_m,
+                                roll=roll_rad,
+                                pitch=pitch_rad,
+                                yaw=yaw_rad,
+                                degrees=False,
+                                mm=False,
                             )
                             new_pose = compose_world_offset(
                                 current_head_pose, secondary_head_pose, reorthonormalize=True
@@ -218,6 +222,7 @@ class HeadWobbler:
                             # Fallback : créer une nouvelle pose avec les offsets
                             if hasattr(current_pose, "x"):
                                 import copy
+
                                 new_pose = copy.deepcopy(current_pose)
                                 new_pose.x = getattr(current_pose, "x", 0) + x_m
                                 new_pose.y = getattr(current_pose, "y", 0) + y_m
@@ -302,6 +307,7 @@ class HeadWobbler:
         except Exception as e:
             print(f"❌ HeadWobbler: Erreur lors de l'application des offsets: {e}")
             import traceback
+
             traceback.print_exc()
 
     def working_loop(self) -> None:
@@ -393,7 +399,9 @@ class HeadWobbler:
                     if not robot_speaking:
                         # Ignorer ce résultat et passer au suivant
                         if i == 0:  # Log seulement pour le premier offset ignoré
-                            print(f"⚠️  HeadWobbler: Mouvement ignoré - robot ne parle pas (robot_speaking={robot_speaking})")
+                            print(
+                                f"⚠️  HeadWobbler: Mouvement ignoré - robot ne parle pas (robot_speaking={robot_speaking})"
+                            )
                         with self._state_lock:
                             self._hops_done += 1
                         i += 1
@@ -402,7 +410,9 @@ class HeadWobbler:
                     # Appliquer les offsets seulement si ils sont significatifs
                     if abs(r["roll_rad"]) > 0.001 or abs(r["pitch_rad"]) > 0.001 or abs(r["yaw_rad"]) > 0.001:
                         if i == 0:  # Log seulement pour le premier offset appliqué
-                            print(f"✅ HeadWobbler: Application d'offsets (roll={r['roll_rad']:.4f}, pitch={r['pitch_rad']:.4f}, yaw={r['yaw_rad']:.4f})")
+                            print(
+                                f"✅ HeadWobbler: Application d'offsets (roll={r['roll_rad']:.4f}, pitch={r['pitch_rad']:.4f}, yaw={r['yaw_rad']:.4f})"
+                            )
                         self._apply_offsets(offsets)
 
                     with self._state_lock:
